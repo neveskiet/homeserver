@@ -1,0 +1,48 @@
+# Ansible playbook for setting up my home server
+
+---
+  - name: "Setting up home server"
+    host: localhost
+    connection: local
+
+    # become root user, which is needed for most tasks
+    become: yes
+    become_user: root
+
+    handlers:
+    - name: restart smbd
+      ansible.builtin.service:
+        name: smbd
+        state: restarted
+
+    tasks:
+    - name: Install needed packages
+      apt:
+        name:
+        - software-properties-common
+        - dkms
+        state: latest
+        cache_valid_time: 3600
+
+    - name: Setup ZFS
+      apt:
+        name:
+        - zfsutils-linux
+        - zfs-auto-snapshot
+        state: latest
+        cache_valid_time: 36000
+
+      vars:
+        zfs: {
+          poolName: data,
+          disk: /dev/sda1
+        }
+
+    - zpool_facts: properties='free,size'
+
+    - debug: msg='ZFS pool {{ item.name }} exists? -> [{{ item.name == zfs.poolName }}] It has {{ item.free }} free space out of {{ item.size }}.'
+      with_items: '{{ ansible_zfs_pools }}'
+
+    - name: Create zsh pool '{{zfs.poolName}}' with 1 disk
+      shell: 'zpool create {{ zfs.poolName }} {{ zfs.disk }} -f'
+      when: 'not (ansible_zfs_pools|length > 0 and ansible_zfs_pools[0].name == zfs.poolName)'
